@@ -13,6 +13,7 @@ import time
 
 from termcolor import colored
 
+from pythainlp import word_vector
 
 START = "<START>"
 STOP = "<STOP>"
@@ -94,40 +95,51 @@ class Config:
         self.device = torch.device(args.device)
         self.num_outer_iterations = args.num_outer_iterations
 
-    def read_pretrain_embedding(self) -> Tuple[Union[Dict[str, np.array], None], int]:
-        """
-        Read the pretrained word embeddings, return the complete embeddings and the embedding dimension
-        :return:
-        """
-        print("reading the pretraing embedding: %s" % (self.embedding_file))
-        if self.embedding_file is None:
-            print("pretrain embedding in None, using random embedding")
-            return None, self.embedding_dim
-        else:
-            exists = os.path.isfile(self.embedding_file)
-            if not exists:
-                print(colored("[Warning] pretrain embedding file not exists, using random embedding",  'red'), flush=True)
-                time.sleep(3)
-                return None, self.embedding_dim
-                # raise FileNotFoundError("The embedding file does not exists")
-        embedding_dim = -1
-        embedding = dict()
-        with open(self.embedding_file, 'r', encoding='utf-8') as file:
-            for line in tqdm(file.readlines()):
-                line = line.strip()
-                if len(line) == 0:
-                    continue
-                tokens = line.split()
-                if embedding_dim < 0:
-                    embedding_dim = len(tokens) - 1
-                else:
-                    # print(tokens)
-                    # print(embedding_dim)
-                    assert (embedding_dim + 1 == len(tokens))
-                embedd = np.empty([1, embedding_dim])
-                embedd[:] = tokens[1:]
-                first_col = tokens[0]
-                embedding[first_col] = embedd
+    # def read_pretrain_embedding(self) -> Tuple[Union[Dict[str, np.array], None], int]:
+    #     """
+    #     Read the pretrained word embeddings, return the complete embeddings and the embedding dimension
+    #     :return:
+    #     """
+    #     print("reading the pretraing embedding: %s" % (self.embedding_file))
+    #     if self.embedding_file is None:
+    #         print("pretrain embedding in None, using random embedding")
+    #         return None, self.embedding_dim
+    #     else:
+    #         exists = os.path.isfile(self.embedding_file)
+    #         if not exists:
+    #             print(colored("[Warning] pretrain embedding file not exists, using random embedding",  'red'), flush=True)
+    #             time.sleep(3)
+    #             return None, self.embedding_dim
+    #             # raise FileNotFoundError("The embedding file does not exists")
+    #     embedding_dim = -1
+    #     embedding = dict()
+    #     with open(self.embedding_file, 'r', encoding='utf-8') as file:
+    #         for line in tqdm(file.readlines()):
+    #             line = line.strip()
+    #             if len(line) == 0:
+    #                 continue
+    #             tokens = line.split()
+    #             if embedding_dim < 0:
+    #                 embedding_dim = len(tokens) - 1
+    #             else:
+    #                 # print(tokens)
+    #                 # print(embedding_dim)
+    #                 assert (embedding_dim + 1 == len(tokens))
+    #             embedd = np.empty([1, embedding_dim])
+    #             embedd[:] = tokens[1:]
+    #             first_col = tokens[0]
+    #             embedding[first_col] = embedd
+    #     return embedding, embedding_dim
+
+    def read_pretrain_embedding(self):
+        '''
+        Load word vector from pythainlp and transform into dict word->vector
+        '''
+        model = word_vector.get_model()
+        embedding = {}
+        for word in model.index2word:
+            embedding[word] = model[word]
+        embedding_dim = list(embedding.values())[0].shape[0]
         return embedding, embedding_dim
 
     def build_word_idx(self, train_insts: List[Instance], dev_insts: List[Instance], test_insts: List[Instance]) -> None:
