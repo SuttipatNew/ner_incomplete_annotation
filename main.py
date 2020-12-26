@@ -17,6 +17,7 @@ import tarfile
 import shutil
 import math
 import itertools
+import logging
 
 
 def set_seed(opt, seed):
@@ -24,7 +25,7 @@ def set_seed(opt, seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     if opt.device.startswith("cuda"):
-        print("using GPU...", torch.cuda.current_device())
+        logging.info("using GPU... " + str(torch.cuda.current_device()))
         torch.cuda.manual_seed(seed)
         torch.cuda.manual_seed_all(seed)
 
@@ -65,13 +66,13 @@ def parse_arguments(parser):
 
     args = parser.parse_args()
     for k in args.__dict__:
-        print(k + ": " + str(args.__dict__[k]))
+        logging.info(k + ": " + str(args.__dict__[k]))
     return args
 
 
 def train_model(config: Config, train_insts: List[List[Instance]], dev_insts: List[Instance], test_insts: List[Instance]):
     train_num = sum([len(insts) for insts in train_insts])
-    print("[Training Info] number of training instances: %d" % (train_num))
+    logging.info("[Training Info] number of training instances: %d" % (train_num))
 
     dev_batches = batching_list_instances(config, dev_insts)
     test_batches = batching_list_instances(config, test_insts)
@@ -82,7 +83,7 @@ def train_model(config: Config, train_insts: List[List[Instance]], dev_insts: Li
     #     raise FileExistsError(f"The folder {model_folder} exists. Please either delete it or create a new one "
     #                           f"to avoid override.")
 
-    print("[Training Info] The model will be saved to: %s.tar.gz" % (model_folder))
+    logging.info("[Training Info] The model will be saved to: %s.tar.gz" % (model_folder))
     if not os.path.exists(model_folder):
         os.makedirs(model_folder)
     if not os.path.exists(res_folder):
@@ -90,11 +91,11 @@ def train_model(config: Config, train_insts: List[List[Instance]], dev_insts: Li
 
     num_outer_iterations = config.num_outer_iterations
     for iter in range(num_outer_iterations):
-        print(f"[Training Info] Running for {iter}th large iterations.")
+        logging.info(f"[Training Info] Running for {iter}th large iterations.")
         model_names = [] #model names for each fold
         train_batches = [batching_list_instances(config, insts) for insts in train_insts]
         for fold_id, folded_train_insts in enumerate(train_insts):
-            print(f"[Training Info] Training fold {fold_id}.")
+            logging.info(f"[Training Info] Training fold {fold_id}.")
             model_name = model_folder + f"/lstm_crf_{fold_id}.m"
             model_names.append(model_name)
             train_one(config=config, train_batches = train_batches[fold_id],
@@ -102,9 +103,9 @@ def train_model(config: Config, train_insts: List[List[Instance]], dev_insts: Li
 
         # assign hard prediction to other folds
         if config.variant == "hard":
-            print("\n\n[Data Info] Assigning labels for the HARD approach")
+            logging.info("\n\n[Data Info] Assigning labels for the HARD approach")
         else:
-            print("\n\n[Data Info] Performing marginal decoding to assign the marginals")
+            logging.info("\n\n[Data Info] Performing marginal decoding to assign the marginals")
 
         for fold_id, folded_train_insts in enumerate(train_insts):
             model = NNCRF(config)
@@ -114,9 +115,9 @@ def train_model(config: Config, train_insts: List[List[Instance]], dev_insts: Li
                                      fold_batches = train_batches[1-fold_id],
                                      folded_insts= train_insts[1 - fold_id])  ## set a new label id
 
-        print("\n\n")
+        logging.info("\n\n")
 
-        print("[Training Info] Training the final model" )
+        logging.info("[Training Info] Training the final model" )
         all_train_insts = list(itertools.chain.from_iterable(train_insts))
         model_name = model_folder + "/final_lstm_crf.m"
         config_name = model_folder + "/config.conf"
@@ -124,12 +125,12 @@ def train_model(config: Config, train_insts: List[List[Instance]], dev_insts: Li
         all_train_batches = batching_list_instances(config= config, insts=all_train_insts)
         model = train_one(config = config, train_batches=all_train_batches, dev_insts=dev_insts, dev_batches=dev_batches,
                           model_name=model_name, config_name=config_name,test_insts=test_insts, test_batches=test_batches,result_filename=res_name)
-        print("Archiving the best Model...")
+        logging.info("Archiving the best Model...")
         with tarfile.open(model_folder + "/" + model_folder + ".tar.gz", "w:gz") as tar:
             tar.add(model_folder, arcname=os.path.basename(model_folder))
-        # print("The best dev: %.2f" % (best_dev[0]))
-        # print("The corresponding test: %.2f" % (best_test[0]))
-        # print("Final testing.")
+        # logging.info("The best dev: %.2f" % (best_dev[0]))
+        # logging.info("The corresponding test: %.2f" % (best_test[0]))
+        # logging.info("Final testing.")
         model.load_state_dict(torch.load(model_name))
         model.eval()
         evaluate_model(config, model, test_batches, "test", test_insts)
@@ -186,7 +187,7 @@ def train_one(config: Config, train_batches: List[Tuple], dev_insts: List[Instan
             optimizer.step()
             model.zero_grad()
         end_time = time.time()
-        print("Epoch %d: %.5f, Time is %.2fs" % (i, epoch_loss, end_time - start_time), flush=True)
+        logging.info("Epoch %d: %.5f, Time is %.2fs" % (i, epoch_loss, end_time - start_time))
 
         model.eval()
         # metric is [precision, recall, f_score]
@@ -194,7 +195,7 @@ def train_one(config: Config, train_batches: List[Tuple], dev_insts: List[Instan
         if test_insts is not None:
             test_metrics = evaluate_model(config, model, test_batches, "test", test_insts)
         if dev_metrics[2] > best_dev_f1:
-            print("saving the best model...")
+            logging.info("saving the best model...")
             best_dev_f1 = dev_metrics[2]
             if test_insts is not None:
                 saved_test_metrics = test_metrics
@@ -208,8 +209,8 @@ def train_one(config: Config, train_batches: List[Tuple], dev_insts: List[Instan
                 write_results(result_filename, test_insts)
         model.zero_grad()
     if test_insts is not None:
-        print(f"The best dev F1: {best_dev_f1}" )
-        print(f"The corresponding test: {saved_test_metrics}")
+        logging.info(f"The best dev F1: {best_dev_f1}" )
+        logging.info(f"The corresponding test: {saved_test_metrics}")
     return model
 
 def evaluate_model(config: Config, model: NNCRF, batch_insts_ids, name: str, insts: List[Instance]):
@@ -230,7 +231,7 @@ def evaluate_model(config: Config, model: NNCRF, batch_insts_ids, name: str, ins
     precision = p * 1.0 / total_predict * 100 if total_predict != 0 else 0
     recall = p * 1.0 / total_entity * 100 if total_entity != 0 else 0
     fscore = 2.0 * precision * recall / (precision + recall) if precision != 0 or recall != 0 else 0
-    print("[%s set] Precision: %.2f, Recall: %.2f, F1: %.2f" % (name, precision, recall, fscore), flush=True)
+    logging.info("[%s set] Precision: %.2f, Recall: %.2f, F1: %.2f" % (name, precision, recall, fscore))
     return [precision, recall, fscore]
 
 
@@ -249,26 +250,26 @@ def main():
     tests = reader.read_txt(conf.test_file, conf.test_num)
 
     if conf.context_emb != ContextEmb.none:
-        print('[Data Info] Loading the ELMo vectors for all datasets.')
+        logging.info('[Data Info] Loading the ELMo vectors for all datasets.')
         conf.context_emb_size = load_elmo_vec(conf.train_file + "." + conf.context_emb.name + ".vec", trains)
         load_elmo_vec(conf.dev_file + "." + conf.context_emb.name + ".vec", devs)
         load_elmo_vec(conf.test_file + "." + conf.context_emb.name + ".vec", tests)
 
-    conf.use_iobes(trains + devs + tests)
+    # conf.use_iobes(trains + devs + tests)
     conf.build_label_idx(trains + devs + tests)
 
     conf.build_word_idx(trains, devs, tests)
     conf.build_emb_table()
     conf.map_insts_ids(devs + tests)
-    print("[Data Info] num chars: " + str(conf.num_char))
-    print("[Data Info] num words: " + str(len(conf.word2idx)))
+    logging.info("[Data Info] num chars: " + str(conf.num_char))
+    logging.info("[Data Info] num words: " + str(len(conf.word2idx)))
 
-    print(f"[Data Info] Removing {conf.entity_keep_ratio*100}% of entities from the training set")
+    logging.info(f"[Data Info] Removing {conf.entity_keep_ratio*100}% of entities from the training set")
 
-    print("[Data Info] Removing the entities")
+    logging.info("[Data Info] Removing the entities")
     ## it will return the set of removed entities (for debug purpose)
     _ = remove_entites(trains, conf)
-    # print(f"entities removed: {span_set}")
+    # logging.info(f"entities removed: {span_set}")
     conf.map_insts_ids(trains)
     random.shuffle(trains)
     for inst in trains:
@@ -286,4 +287,5 @@ def main():
     train_model(config=conf, train_insts=trains, dev_insts=devs, test_insts=tests)
 
 if __name__ == "__main__":
+    logging.basicConfig(filename='log', format='[%(levelname)s] %(asctime)s - %(message)s', level=logging.INFO)
     main()
