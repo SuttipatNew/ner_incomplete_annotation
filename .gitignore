@@ -2,3 +2,6 @@
 .idea/*
 *.pyc
 results/*
+tests/data
+.vscode
+data
