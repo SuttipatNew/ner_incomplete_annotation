@@ -5,3 +5,5 @@ results/*
 tests/data
 .vscode
 data
+english_model
+log
